@@ -1,0 +1,38 @@
+/.claude
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Laravel runtime (generated files)
+/storage/logs/
+/bootstrap/cache/
+
+# IDE helpers
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# Editor swap files
+*.swp
+*.swo

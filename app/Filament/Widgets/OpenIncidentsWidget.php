@@ -14,6 +14,11 @@ class OpenIncidentsWidget extends Widget
 
     public array $incidents = [];
 
+    public function getHeading(): ?string
+    {
+        return static::$heading;
+    }
+
     public function mount(): void
     {
         $this->incidents = rescue(fn () => app(ApiClient::class)->openIncidents(), []);

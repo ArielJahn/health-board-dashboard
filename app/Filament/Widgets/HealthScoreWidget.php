@@ -14,6 +14,11 @@ class HealthScoreWidget extends Widget
 
     public array $scores = [];
 
+    public function getHeading(): ?string
+    {
+        return static::$heading;
+    }
+
     public function mount(): void
     {
         $api = app(ApiClient::class);

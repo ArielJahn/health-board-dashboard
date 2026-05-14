@@ -10,6 +10,8 @@ class PipelinesChartWidget extends ChartWidget
 {
     protected static ?string $heading = 'Pipelines nos últimos 30 dias';
     protected static ?int $sort = 4;
+    protected static ?string $pollingInterval = '30s';
+    protected static bool $isLazy = true;
     protected int|string|array $columnSpan = 'full';
 
     protected function getData(): array

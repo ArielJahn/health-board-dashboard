@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class ApiClient
 {
     private PendingRequest $http;
+    private int $ttl = 60;
 
     public function __construct()
     {
@@ -16,7 +18,6 @@ class ApiClient
             ->acceptJson()
             ->timeout(15);
 
-        // Herd uses a local CA; skip verification in local dev
         if (app()->environment('local')) {
             $client = $client->withoutVerifying();
         }
@@ -24,55 +25,167 @@ class ApiClient
         $this->http = $client;
     }
 
+    // ── Repositories ──────────────────────────────────────────────────────────
+
     public function repositories(): array
     {
-        // Returns paginated: {"data":[...], "current_page":1, ...}
-        return $this->http->get('/repositories')->json('data', []);
+        return Cache::remember('api.repositories', $this->ttl, fn () =>
+            $this->http->get('/repositories')->json('data', [])
+        );
     }
 
     public function repository(int $id): array
     {
-        // Returns single object: {"id":1, "name":"...", ...}
-        return $this->http->get("/repositories/{$id}")->json() ?? [];
+        return Cache::remember("api.repository.{$id}", $this->ttl, fn () =>
+            $this->http->get("/repositories/{$id}")->json('data', [])
+        );
     }
 
-    public function pipelines(?int $repositoryId = null): array
+    public function createRepository(array $data): array
     {
-        if ($repositoryId) {
-            // Returns plain array: [{...}, {...}]
-            return $this->http->get("/repositories/{$repositoryId}/pipelines")->json() ?? [];
-        }
+        $response = $this->http->post('/repositories', $data);
+        Cache::flush();
 
-        // Returns paginated: {"data":[...]}
-        return $this->http->get('/pipelines')->json('data', []);
+        return [
+            'success' => $response->successful(),
+            'data'    => $response->json('data', []),
+            'status'  => $response->status(),
+            'errors'  => $response->json('errors', []),
+        ];
     }
 
-    public function releases(?int $repositoryId = null): array
+    public function deleteRepository(int $id): bool
     {
-        if ($repositoryId) {
-            // Returns plain array (consistent with pipelines sub-resource)
-            return $this->http->get("/repositories/{$repositoryId}/releases")->json() ?? [];
-        }
+        $ok = $this->http->delete("/repositories/{$id}")->successful();
+        Cache::flush();
 
-        // Returns paginated: {"data":[...]}
-        return $this->http->get('/releases')->json('data', []);
+        return $ok;
     }
 
-    public function incidents(): array
+    // ── Pipelines ─────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array{status?: string}  $filters
+     */
+    public function pipelines(?int $repositoryId = null, array $filters = [], int $limit = 50): array
     {
-        // Returns paginated: {"data":[...]}
-        return $this->http->get('/incidents')->json('data', []);
+        $key = 'api.pipelines.' . ($repositoryId ?? 'all') . '.' . md5(serialize($filters)) . ".{$limit}";
+
+        return Cache::remember($key, $this->ttl, function () use ($repositoryId, $filters, $limit) {
+            if ($repositoryId) {
+                return $this->http
+                    ->get("/repositories/{$repositoryId}/pipelines", array_merge($filters, ['limit' => $limit]))
+                    ->json('data', []);
+            }
+
+            return $this->http->get('/pipelines', $filters)->json('data', []);
+        });
     }
 
-    public function openIncidents(): array
+    public function createPipeline(array $data): array
     {
-        // Returns plain array: [{...}] or []
-        return $this->http->get('/incidents/open')->json() ?? [];
+        $response = $this->http->post('/pipelines', $data);
+        Cache::flush();
+
+        return [
+            'success' => $response->successful(),
+            'data'    => $response->json('data', []),
+            'errors'  => $response->json('errors', []),
+        ];
+    }
+
+    // ── Releases ──────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array{environment?: string}  $filters
+     */
+    public function releases(?int $repositoryId = null, array $filters = [], int $limit = 20): array
+    {
+        $key = 'api.releases.' . ($repositoryId ?? 'all') . '.' . md5(serialize($filters)) . ".{$limit}";
+
+        return Cache::remember($key, $this->ttl, function () use ($repositoryId, $filters, $limit) {
+            if ($repositoryId) {
+                return $this->http
+                    ->get("/repositories/{$repositoryId}/releases", array_merge($filters, ['limit' => $limit]))
+                    ->json('data', []);
+            }
+
+            return $this->http->get('/releases', $filters)->json('data', []);
+        });
+    }
+
+    public function createRelease(array $data): array
+    {
+        $response = $this->http->post('/releases', $data);
+        Cache::flush();
+
+        return [
+            'success' => $response->successful(),
+            'data'    => $response->json('data', []),
+            'errors'  => $response->json('errors', []),
+        ];
+    }
+
+    // ── Incidents ─────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array{status?: string, severity?: string}  $filters
+     */
+    public function incidents(array $filters = []): array
+    {
+        $key = 'api.incidents.' . md5(serialize($filters));
+
+        return Cache::remember($key, $this->ttl, fn () =>
+            $this->http->get('/incidents', $filters)->json('data', [])
+        );
+    }
+
+    public function openIncidents(array $filters = []): array
+    {
+        $key = 'api.incidents.open.' . md5(serialize($filters));
+
+        return Cache::remember($key, $this->ttl, fn () =>
+            $this->http->get('/incidents/open', $filters)->json('data', [])
+        );
+    }
+
+    public function createIncident(array $data): array
+    {
+        $response = $this->http->post('/incidents', $data);
+        Cache::flush();
+
+        return [
+            'success' => $response->successful(),
+            'data'    => $response->json('data', []),
+            'errors'  => $response->json('errors', []),
+        ];
+    }
+
+    public function updateIncident(int $id, array $data): array
+    {
+        $response = $this->http->put("/incidents/{$id}", $data);
+        Cache::flush();
+
+        return [
+            'success' => $response->successful(),
+            'data'    => $response->json('data', []),
+            'errors'  => $response->json('errors', []),
+        ];
+    }
+
+    // ── Health Score ──────────────────────────────────────────────────────────
+
+    public function healthScores(): array
+    {
+        return Cache::remember('api.health_scores', $this->ttl, fn () =>
+            $this->http->get('/health-scores')->json('data', [])
+        );
     }
 
     public function healthScore(int $repositoryId): array
     {
-        // Returns direct object: {"score":70, "status":"degraded", ...}
-        return $this->http->get("/health-score/{$repositoryId}")->json() ?? [];
+        return Cache::remember("api.health_score.{$repositoryId}", $this->ttl, fn () =>
+            $this->http->get("/health-score/{$repositoryId}")->json('data', [])
+        );
     }
 }

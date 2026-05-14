@@ -9,24 +9,27 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 class StatsOverviewWidget extends BaseWidget
 {
     protected static ?int $sort = 1;
+    protected static ?string $pollingInterval = '30s';
+    protected static bool $isLazy = true;
     protected int|string|array $columnSpan = 'full';
 
     protected function getStats(): array
     {
         $api = app(ApiClient::class);
 
-        $repositories = rescue(fn () => $api->repositories(), []);
-        $pipelines = rescue(fn () => $api->pipelines(), []);
+        $repositories  = rescue(fn () => $api->repositories(), []);
+        $pipelines     = rescue(fn () => $api->pipelines(), []);
         $openIncidents = rescue(fn () => $api->openIncidents(), []);
-        $releases = rescue(fn () => $api->releases(), []);
+        $criticalOnly  = rescue(fn () => $api->openIncidents(['severity' => 'critical']), []);
+        $releases      = rescue(fn () => $api->releases(), []);
 
-        $successCount = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
+        $successCount   = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));
         $totalPipelines = count($pipelines);
-        $successRate = $totalPipelines > 0
+        $successRate    = $totalPipelines > 0
             ? round(($successCount / $totalPipelines) * 100)
             : 0;
 
-        $criticalIncidents = count(array_filter($openIncidents, fn ($i) => ($i['severity'] ?? '') === 'critical'));
+        $criticalIncidents = count($criticalOnly);
 
         return [
             Stat::make('Repositórios monitorados', count($repositories))

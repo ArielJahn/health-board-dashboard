@@ -9,6 +9,8 @@ class CiHistogramWidget extends ChartWidget
 {
     protected static ?string $heading = 'Taxa de sucesso CI por repositório';
     protected static ?int $sort = 5;
+    protected static ?string $pollingInterval = '30s';
+    protected static bool $isLazy = true;
     protected int|string|array $columnSpan = 'full';
 
     protected function getData(): array
@@ -21,7 +23,7 @@ class CiHistogramWidget extends ChartWidget
         $colors = [];
 
         foreach ($repositories as $repo) {
-            $pipelines = rescue(fn () => $api->pipelines($repo['id']), []);
+            $pipelines = rescue(fn () => $api->pipelines($repo['id'], limit: 100), []);
 
             $total = count($pipelines);
             $success = count(array_filter($pipelines, fn ($p) => ($p['status'] ?? '') === 'success'));

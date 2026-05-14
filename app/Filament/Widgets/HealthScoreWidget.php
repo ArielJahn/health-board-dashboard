@@ -9,6 +9,8 @@ class HealthScoreWidget extends Widget
 {
     protected static ?string $heading = 'Health Score por Repositório';
     protected static ?int $sort = 2;
+    protected static ?string $pollingInterval = '30s';
+    protected static bool $isLazy = true;
     protected int|string|array $columnSpan = 'full';
     protected static string $view = 'filament.widgets.health-score';
 
@@ -21,21 +23,16 @@ class HealthScoreWidget extends Widget
 
     public function mount(): void
     {
-        $api = app(ApiClient::class);
-        $repositories = rescue(fn () => $api->repositories(), []);
+        $scores = rescue(fn () => app(ApiClient::class)->healthScores(), []);
 
-        $this->scores = collect($repositories)
-            ->map(function ($repo) use ($api) {
-                $score = rescue(fn () => $api->healthScore($repo['id']), []);
-
-                return [
-                    'id' => $repo['id'],
-                    'name' => $repo['name'],
-                    'full_name' => $repo['full_name'],
-                    'score' => $score['score'] ?? 0,
-                    'status' => $score['status'] ?? 'unknown',
-                ];
-            })
+        $this->scores = collect($scores)
+            ->map(fn ($score) => [
+                'id'        => $score['repository_id'],
+                'name'      => basename($score['repository']),
+                'full_name' => $score['repository'],
+                'score'     => $score['score'] ?? 0,
+                'status'    => $score['status'] ?? 'unknown',
+            ])
             ->sortBy('score')
             ->values()
             ->toArray();
